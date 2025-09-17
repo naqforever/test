@@ -24,6 +24,9 @@ from logging import INFO
 from dotenv import load_dotenv
 
 from graphiti_core import Graphiti
+from graphiti_core.cross_encoder import OpenAIRerankerClient
+from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig
+from graphiti_core.llm_client import LLMConfig, OpenAIClient
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 
@@ -46,9 +49,9 @@ load_dotenv()
 
 # Neo4j connection parameters
 # Make sure Neo4j Desktop is running with a local DBMS started
-neo4j_uri = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
+neo4j_uri = os.environ.get('NEO4J_URI', 'bolt://192.168.2.162:7687')
 neo4j_user = os.environ.get('NEO4J_USER', 'neo4j')
-neo4j_password = os.environ.get('NEO4J_PASSWORD', 'password')
+neo4j_password = os.environ.get('NEO4J_PASSWORD', 'Unitech@1')
 
 if not neo4j_uri or not neo4j_user or not neo4j_password:
     raise ValueError('NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD must be set')
@@ -62,9 +65,41 @@ async def main():
     # This is required before using other Graphiti
     # functionality
     #################################################
+    llm_config = LLMConfig(
+        api_key='abc123',
+        model='Qwen3-14B',
+        small_model='Qwen3-14B',  # Can be the same as main model
+        base_url='http://192.168.2.29:8001/v1'
+    )
+
+    # embedder = GeminiEmbedder(
+    #     config=GeminiEmbedderConfig(
+    #         api_key='AIzaSyB9Ht5iAhcYANATYSBVolo04jHv3goceWY',
+    #         embedding_model='gemini-embedding-001',
+    #         embedding_dim=3072
+    #     )
+    # )
+
+    embedder = OpenAIEmbedder(
+        config=OpenAIEmbedderConfig(
+            api_key='abc',
+            embedding_model='dengcao/Qwen3-Embedding-0.6B:Q8_0',
+            embedding_dim=1024,
+            base_url='http://192.168.2.164:11434/v1'
+        )
+    )
+    # Create OpenAI LLM client
+    llm_client = OpenAIClient(config=llm_config)
 
     # Initialize Graphiti with Neo4j connection
-    graphiti = Graphiti(neo4j_uri, neo4j_user, neo4j_password)
+    graphiti = Graphiti(
+        neo4j_uri,
+        neo4j_user,
+        neo4j_password,
+        llm_client=llm_client,
+        embedder=embedder,
+        cross_encoder=OpenAIRerankerClient(client=llm_client, config=llm_config)
+    )
 
     try:
         # Initialize the graph database with graphiti's indices. This only needs to be done once.
@@ -84,7 +119,7 @@ async def main():
         episodes = [
             {
                 'content': 'Kamala Harris is the Attorney General of California. She was previously '
-                'the district attorney for San Francisco.',
+                           'the district attorney for San Francisco.',
                 'type': EpisodeType.text,
                 'description': 'podcast transcript',
             },
